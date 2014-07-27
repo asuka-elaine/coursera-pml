@@ -1,0 +1,82 @@
+# History files
+.Rhistory
+
+# Example code in package build process
+*-Ex.R
+
+# R data files from past sessions
+.Rdata
+
+library(caret)
+trainingOri <- read.csv("~/R resources/Course Project/pml-training.csv", header=TRUE, na.strings = c("NA",""))
+testingOri <- read.csv("~/R resources/Course Project/pml-testing.csv", header=TRUE, na.strings = c("NA",""))
+dim(trainingOri)
+summary(trainingOri)
+#Remove variables with almost zero variances
+nzv<-nearZeroVar(trainingOri)
+trainingOri2 <- trainingOri[,-nzv]
+testingOri2 <-testingOri[,-nzv]
+dim(trainingOri2)
+#Remove varibles that are mostly 'NA'
+trainingOri3<-trainingOri2[,colSums(is.na(trainingOri2))==0]
+testingOri3<-testingOri2[,colSums(is.na(trainingOri2))==0]
+dim(trainingOri3)
+summary(trainingOri3)
+
+#Remove variables that are non-numeric or (apparently) non-informative
+trainingOriFin<-trainingOri3[,c(-1,-2,-3,-5)]
+testingOriFin<-testingOri3[,c(-1,-2,-3,-5)]
+
+dim(trainingOriFin)
+
+#Data splitting
+inTrain <- createDataPartition(y=trainingOriFin$classe,p=0.6,list=FALSE)
+training <- trainingOriFin[inTrain,]
+testing<-trainingOriFin[-inTrain,]
+dim(training)
+dim(testing)
+
+#Check Correlation
+M<-abs(cor(training[,-55]))
+diag(M)<-0
+head(which(M>0.8,arr.ind=T))
+
+#Check quality of highly correlated variables
+library(Hmisc)
+cutyb<-cut2(training$yaw_belt,g=5)
+qplot(c(1:11776),training$classe,color=cutyb)
+
+#Model Building
+set.seed(726)
+#Model 1: use original set
+modelFit <- train(training$classe ~.,data=training,method="rf",trControl = trainControl(method='cv'))
+confusionMatrix(testing$classe,predict(modelFit,testing))
+
+#Model 2: remove highly correlated and low contribution predictors
+training2 <- training[,c(-3,-4,-5,-6,-10,-11,-12,-13,-20,-21,-24,-26,-27,-28,-30,-31,-33,-35,-36,-47,-48)]
+testing2 <- testing[,c(-3,-4,-5,-6,-10,-11,-12,-13,-20,-21,-24,-26,-27,-28,-30,-31,-33,-35,-36,-47,-48)]
+modelFit2 <- train(training$classe ~.,data=training2,method="rf",trControl = trainControl(method='cv'))
+confusionMatrix(testing$classe,predict(modelFit2,testing2))
+
+#Model 3: use PCA to reduce correlation
+preProc <- preProcess(training[,-55],method="pca",thresh=0.95)
+trainPC <- predict(preProc,training[,-55])
+modelFit3 <- train(training$classe ~.,data=trainPC,method="rf",trControl = trainControl(method='cv'))
+testPC <- predict(preProc,testing[,-55])
+confusionMatrix(testing$classe,predict(modelFit3,testPC))
+
+#Predict with Model 2 using testing set
+testingOriFin2<-testingOriFin[,c(-3,-4,-5,-6,-10,-11,-12,-13,-20,-21,-24,-26,-27,-28,-30,-31,-33,-35,-36,-47,-48)]
+answers <- predict(modelFit2,testingOriFin2)
+answers
+
+#File output
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(answers)
